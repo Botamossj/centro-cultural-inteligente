@@ -1,0 +1,16 @@
+# Forzar finales de línea LF en archivos que se ejecutan en Linux/contenedores.
+# Evita errores como "$'\r': command not found" al ejecutar scripts en el servidor.
+*.sh        text eol=lf
+*.py        text eol=lf
+*.conf      text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sql       text eol=lf
+schema.sql  text eol=lf
+
+# Archivos que pueden mantener su formato nativo
+*.md        text
+*.html      text
+*.css       text
+*.js        text

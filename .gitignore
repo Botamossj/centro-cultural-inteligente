@@ -1,0 +1,30 @@
+# Variables de entorno con credenciales reales
+.env
+
+# Claves y certificados
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Datos persistentes de PostgreSQL (nunca se versionan)
+postgres-data/
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs locales
+*.log
