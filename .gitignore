@@ -28,3 +28,7 @@ Thumbs.db
 
 # Logs locales
 *.log
+
+# Carpetas de entrega (no se versionan)
+ENTREGA_FRONTEND/
+ENTREGA_BACKEND/
