@@ -1,0 +1,102 @@
+name: CI/CD - Centro Cultural Inteligente
+
+# Solo se dispara cuando el código llega a main (tras aprobar un Pull Request).
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ===================================================================
+  # JOB 1: Validación (no toca el servidor)
+  # ===================================================================
+  validate:
+    name: Validar configuración
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Crear .env temporal con valores ficticios
+        run: |
+          cat > .env <<'EOF'
+          DB_NAME=validacion_db
+          DB_USER=validacion_user
+          DB_PASSWORD=validacion_pass_ficticia
+          DB_HOST=database
+          DB_PORT=5432
+          POSTGRES_DATA_PATH=./postgres-data
+          APP_ENV=production
+          EOF
+
+      - name: Validar sintaxis de docker-compose
+        run: docker compose config --quiet
+
+      - name: Validar sintaxis de Python
+        run: |
+          python -m py_compile backend/app.py backend/db.py backend/validation.py
+          python -m py_compile scripts/test_concurrency.py
+
+      - name: Construir imagen del backend (opcional pero recomendado)
+        run: docker compose build backend
+
+      - name: Limpiar .env temporal
+        if: always()
+        run: rm -f .env
+
+  # ===================================================================
+  # JOB 2: Despliegue a EC2 vía SSH (depende de la validación)
+  # ===================================================================
+  deploy:
+    name: Desplegar en AWS EC2
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preparar clave SSH privada
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Desplegar en el servidor
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}" \
+            'bash -s' <<'ENDSSH'
+            set -e
+            cd /opt/centro-cultural/app
+
+            echo "==> Actualizando código desde main"
+            git fetch --all
+            git reset --hard origin/main
+
+            echo "==> Levantando servicios (preservando datos de PostgreSQL)"
+            docker compose up -d --build --remove-orphans
+
+            echo "==> Estado de los servicios"
+            docker compose ps
+
+            echo "==> Esperando a que el health check responda"
+            for i in $(seq 1 12); do
+              if curl --fail --silent http://localhost/api/health > /dev/null; then
+                echo "Health check OK"
+                exit 0
+              fi
+              echo "Reintentando health check ($i/12)..."
+              sleep 5
+            done
+
+            echo "ERROR: el health check no respondió. Últimos logs:"
+            docker compose logs --tail=100
+            exit 1
+          ENDSSH
+
+      - name: Limpiar clave SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
